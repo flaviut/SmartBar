@@ -24,6 +24,10 @@ import okio.BufferedSink;
 
 
 public class RepCounterActivity extends AppCompatActivity {
+
+    private static final MediaType JSON
+            = MediaType.parse("application/json; charset=utf-8");
+
     ArrayList<Rep> reps;
     int countAlready;
     public static RepCounterActivity latestActivity;
@@ -42,8 +46,6 @@ public class RepCounterActivity extends AppCompatActivity {
         repCount.setText("0 ms");
     }
 
-    static final int SubmitAfter
-
     void handleRep(int repDurationMs, int balance) {
         reps.add(new Rep(repDurationMs, balance));
         TextView repCount = (TextView) findViewById(R.id.repCount);
@@ -51,59 +53,32 @@ public class RepCounterActivity extends AppCompatActivity {
         repCount.setText(String.format("%d", repCountNumber));
         TextView durationCount = (TextView) findViewById(R.id.durationText);
         durationCount.setText(String.format("%d ms", repDurationMs));
-        if (this.reps.size() == 15) {
-            this.countAlready += 15;
+        TextView balanceText = (TextView) findViewById(R.id.balanceText);
+        balanceText.setText(String.format("%d", balance));
+
+
+        if (this.reps.size() == 7) {
+            this.countAlready += 7;
             final OkHttpClient client = new OkHttpClient();
 
-            Request request = new Request.Builder()
-                    .post(new RequestBody() {
-                        @Override
-                        public MediaType contentType() {
-                            return "application/json"
-                        }
+            StringJoiner sj = new StringJoiner(",", "[", "]");
 
-                        @Override
-                        public void writeTo(BufferedSink sink) throws IOException {
-                            StringJoiner sj = new StringJoiner(",", "[", "]");
-
-                            for (Rep rep : reps) {
-                                sj.add(String.format(Locale.US, "{\"duration\":%d,\"balance\":%d}",
-                                        rep.durationMs, rep.balance));
-                            }
-
-                            String result = "{\"values\":" + sj.toString() + "}";
-
-                            sink.write(result.getBytes("UTF8"));
-                        }
-                    })
-                    .url("http://...compute-1.amazonaws.com/api/add-data")
-                    .build();
-            client.newCall(request).enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, IOException e) {
-                    e.printStackTrace();
-                }
-
-                @Override
-                public void onResponse(Call call, Response response) throws IOException {
-                    if (!response.isSuccessful())
-                        throw new IOException("Unexpected code " + response);
-
-                    Headers responseHeaders = response.headers();
-                    for (int i = 0, size = responseHeaders.size(); i < size; i++) {
-                        Log.e(responseHeaders.name(i), responseHeaders.value(i));
-                    }
-
-                    Log.e("response", response.body().string());
-
-                });
+            for (Rep rep : reps) {
+                sj.add(String.format(Locale.US, "{\"duration\":%d,\"balance\":%d}",
+                        rep.durationMs, rep.balance));
             }
 
+            String result = "{\"values\":" + sj.toString() + "}";
 
+
+            Request request = new Request.Builder()
+                    .url("http://ec2-54-164-165-121.compute-1.amazonaws.com/api/add-data")
+                    .post(RequestBody.create(JSON, result))
+                    .build();
+            client.newCall(request);
         }
-        //TextView balanceText = (TextView) findViewById(R.id.balanceText);
-        //balanceText.setText(balance);
     }
-
 }
+
+
 
