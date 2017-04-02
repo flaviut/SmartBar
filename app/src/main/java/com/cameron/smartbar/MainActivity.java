@@ -21,7 +21,6 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.support.v7.app.ActionBarActivity;
 import android.view.View;
-import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -31,14 +30,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Set;
 import java.util.UUID;
-
-
-
 
 
 public class MainActivity extends ActionBarActivity {
@@ -61,29 +55,26 @@ public class MainActivity extends ActionBarActivity {
             "00001101-0000-1000-8000-00805F9B34FB";
 
     ThreadConnectBTdevice myThreadConnectBTdevice;
-    ThreadConnected myThreadConnected;
+    BluetoothCommThread myThreadConnected;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        listViewPairedDevice = (ListView)findViewById(R.id.pairedlist);
+        listViewPairedDevice = (ListView) findViewById(R.id.pairedlist);
 
-        inputPane = (LinearLayout)findViewById(R.id.inputpane);
-        inputField = (EditText)findViewById(R.id.input);
-        btnSend = (Button)findViewById(R.id.send);
-        btnSend.setOnClickListener(new View.OnClickListener(){
+        inputPane = (LinearLayout) findViewById(R.id.inputpane);
+        inputField = (EditText) findViewById(R.id.input);
+        btnSend = (Button) findViewById(R.id.send);
+        btnSend.setOnClickListener(v -> {
+            if (myThreadConnected != null) {
+                byte[] bytesToSend = inputField.getText().toString().getBytes();
+                myThreadConnected.write(bytesToSend);
+            }
+        });
 
-            @Override
-            public void onClick(View v) {
-                if(myThreadConnected!=null){
-                    byte[] bytesToSend = inputField.getText().toString().getBytes();
-                    myThreadConnected.write(bytesToSend);
-                }
-            }});
-
-        if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH)){
+        if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH)) {
             Toast.makeText(this,
                     "FEATURE_BLUETOOTH NOT support",
                     Toast.LENGTH_LONG).show();
@@ -107,9 +98,11 @@ public class MainActivity extends ActionBarActivity {
                 bluetoothAdapter.getAddress();
 
     }
+
     public void sendMessage(View view) {
         //DO so
     }
+
     @Override
     protected void onStart() {
         super.onStart();
@@ -171,17 +164,17 @@ public class MainActivity extends ActionBarActivity {
     protected void onDestroy() {
         super.onDestroy();
 
-        if(myThreadConnectBTdevice!=null){
+        if (myThreadConnectBTdevice != null) {
             myThreadConnectBTdevice.cancel();
         }
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if(requestCode==REQUEST_ENABLE_BT){
-            if(resultCode == Activity.RESULT_OK){
+        if (requestCode == REQUEST_ENABLE_BT) {
+            if (resultCode == Activity.RESULT_OK) {
                 setup();
-            }else{
+            } else {
                 Toast.makeText(this,
                         "BlueTooth NOT enabled",
                         Toast.LENGTH_SHORT).show();
@@ -191,10 +184,10 @@ public class MainActivity extends ActionBarActivity {
     }
 
     //Called in ThreadConnectBTdevice once connect successed
-    //to start ThreadConnected
-    private void startThreadConnected(BluetoothSocket socket){
+    //to start BluetoothCommThread
+    private void startThreadConnected(BluetoothSocket socket) throws IOException {
 
-        myThreadConnected = new ThreadConnected(socket);
+        myThreadConnected = new BluetoothCommThread(this, socket);
         myThreadConnected.start();
 
     }
@@ -212,7 +205,6 @@ public class MainActivity extends ActionBarActivity {
         private ThreadConnectBTdevice(BluetoothDevice device) {
             bluetoothDevice = device;
 
-
             try {
                 bluetoothSocket = device.createRfcommSocketToServiceRecord(myUUID);
             } catch (IOException e) {
@@ -225,62 +217,47 @@ public class MainActivity extends ActionBarActivity {
         public void run() {
             boolean success = false;
 
+            try {
+                bluetoothSocket.connect();
+                success = true;
+            } catch (IOException e) {
+                e.printStackTrace();
+
+                final String eMessage = e.getMessage();
+
                 try {
+                    bluetoothSocket.close();
+                } catch (IOException e1) {
+                    // TODO Auto-generated catch block
+                    e1.printStackTrace();
+                }
+            }
 
-                        bluetoothSocket.connect();
+            if (success) {
+                //connect successful
+                final String msgconnected = "connect successful:\n"
+                        + "BluetoothSocket: " + bluetoothSocket + "\n"
+                        + "BluetoothDevice: " + bluetoothDevice;
 
-                            success = true;
+                runOnUiThread(() -> {
+                    listViewPairedDevice.setVisibility(View.GONE);
+                    //inputPane.setVisibility(View.VISIBLE);
+                });
 
-
+                try {
+                    startThreadConnected(bluetoothSocket);
                 } catch (IOException e) {
                     e.printStackTrace();
-
-                    final String eMessage = e.getMessage();
-                    runOnUiThread(new Runnable() {
-
-                        @Override
-                        public void run() {
-
-                        }
-                    });
-
-                    try {
-                        bluetoothSocket.close();
-                    } catch (IOException e1) {
-                        // TODO Auto-generated catch block
-                        e1.printStackTrace();
-                    }
                 }
-
-                if (success) {
-                    //connect successful
-                    final String msgconnected = "connect successful:\n"
-                            + "BluetoothSocket: " + bluetoothSocket + "\n"
-                            + "BluetoothDevice: " + bluetoothDevice;
-
-                    runOnUiThread(new Runnable() {
-
-                        @Override
-                        public void run() {
-
-
-                            listViewPairedDevice.setVisibility(View.GONE);
-                            //inputPane.setVisibility(View.VISIBLE);
-
-                        }
-                    });
-
-                    startThreadConnected(bluetoothSocket);
-                    Intent intent = new Intent(MainActivity.this , RoutineListActivity.class);
-                    startActivity(intent);
-                } else {
-                    //fail
-                }
+                Intent intent = new Intent(MainActivity.this, RoutineListActivity.class);
+                startActivity(intent);
+            } else {
+                //fail
+            }
 
         }
 
         public void cancel() {
-
             Toast.makeText(getApplicationContext(),
                     "close bluetoothSocket",
                     Toast.LENGTH_LONG).show();
@@ -291,92 +268,11 @@ public class MainActivity extends ActionBarActivity {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
             }
-
         }
-
     }
-    //B8:27:BB:C2:80:CF is the hardcoded pi
-    /*
-    ThreadConnected:
-    Background Thread to handle Bluetooth data communication
-    after connected
-     */
-    private class ThreadConnected extends Thread {
-        private final BluetoothSocket connectedBluetoothSocket;
-        private final InputStream connectedInputStream;
-        private final OutputStream connectedOutputStream;
 
-        public ThreadConnected(BluetoothSocket socket) {
-            connectedBluetoothSocket = socket;
-            InputStream in = null;
-            OutputStream out = null;
-
-            try {
-                in = socket.getInputStream();
-                out = socket.getOutputStream();
-            } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
-
-            connectedInputStream = in;
-            connectedOutputStream = out;
-        }
-
-        @Override
-        public void run() {
-            byte[] buffer = new byte[1024];
-            int bytes;
-
-            while (true) {
-                try {
-                    bytes = connectedInputStream.read(buffer);
-                    String strReceived = new String(buffer, 0, bytes);
-                    final String msgReceived = String.valueOf(bytes) +
-                            " Reps: "
-                            + strReceived;
-
-                    System.out.print(msgReceived + "\r");
-                    runOnUiThread(new Runnable(){
-
-                        @Override
-                        public void run() {
-                            textStatus.setText(msgReceived);
-                        }});
-
-                } catch (IOException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
-
-                    final String msgConnectionLost = "Connection lost:\n"
-                            + e.getMessage();
-                    runOnUiThread(new Runnable(){
-
-                        @Override
-                        public void run() {
-                            textStatus.setText(msgConnectionLost);
-                        }});
-                }
-            }
-        }
-
-        public void write(byte[] buffer) {
-            try {
-                connectedOutputStream.write(buffer);
-            } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
-        }
-
-        public void cancel() {
-            try {
-                connectedBluetoothSocket.close();
-            } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
-        }
+    void handleRep(int repDurationMs, int balance) {
+        RepCounterActivity.latestActivity.handleRep(repDurationMs, balance);
     }
 
 }
